@@ -76,7 +76,9 @@ fs.writeFileSync(
   create_html.replace(bootstrap_pattern, '$1./mcp-bridge/McpBridge.ts$2')
 )
 fs.mkdirSync(path.join(APP_DIR, 'src', 'mcp-bridge'), { recursive: true })
-fs.copyFileSync(path.join(ROOT, 'bridge', 'McpBridge.ts'), path.join(APP_DIR, 'src', 'mcp-bridge', 'McpBridge.ts'))
+for (const file of fs.readdirSync(path.join(ROOT, 'bridge')).filter(name => name.endsWith('.ts'))) {
+  fs.copyFileSync(path.join(ROOT, 'bridge', file), path.join(APP_DIR, 'src', 'mcp-bridge', file))
+}
 fs.copyFileSync(path.join(ROOT, 'bridge', 'mcp.vite.config.mjs'), path.join(APP_DIR, 'mcp.vite.config.mjs'))
 
 // 4. build

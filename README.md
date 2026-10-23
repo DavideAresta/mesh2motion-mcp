@@ -121,6 +121,7 @@ The pipeline is a sequence of steps; tools say which step they need and what to 
 | load_skeleton | `select_skeleton` | Rig type, hand setup, scale (`"auto"` fits the rig's reference model) with live preview |
 | load_skeleton | `confirm_skeleton` | Load the rig and start editing joints |
 | edit/animations | `get_bones` | Bones with parent, world joint position and mirror counterpart |
+| edit_skeleton | `auto_place_joints` | Human in T-pose: fits all joints to the mesh shape; optional chin/groin/wrist/elbow/knee markers |
 | edit_skeleton | `set_bones` | Absolute positions, offsets or rotations; mirrors left/right; children follow or stay |
 | edit_skeleton | `edit_history` | Undo / redo joint edits |
 | edit_skeleton | `set_skinning_options` | Head and arm weight corrections (human), weight-paint preview |
@@ -158,7 +159,7 @@ A typical run:
 
 1. `load_model {path}` → `transform_model {align_to_floor, center_xz}` if needed
 2. `select_skeleton {type: "human", scale: "auto"}` → `screenshot {view: "front"}`
-3. `confirm_skeleton` → `screenshot` front and left, `analyze_model` → `set_bones` (e.g. `{"name": "lowerarm_l", "position": [0.48, 1.41, -0.03]}`, mirrored to `lowerarm_r`)
+3. `confirm_skeleton` → `auto_place_joints` → `screenshot` front and left; fix single joints with `set_bones` (e.g. `{"name": "lowerarm_l", "position": [0.48, 1.41, -0.03]}`, mirrored to `lowerarm_r`)
 4. `set_skinning_options {preview: "weights"}` + `screenshot` to inspect the influence areas
 5. `bind_skin` → `list_animations {filter: "sword"}` → `animation_sheet {name: "Sword_Attack"}`
 6. `export {output_path: "knight", format: "fbx", fbx_preset: "unity", animations: ["Idle", "Walk", "Run", "Sword_Attack"]}`
@@ -188,8 +189,19 @@ node scripts/smoke-test.mjs --model path/to/model.glb --type fox
 - One session per server process: the app is a single stateful 3D scene, so tool calls are queued.
 - Mesh2Motion's separate retargeting page (moving its animations onto an already rigged model) is not exposed yet.
 - Exports always contain at least one animation; that is how Mesh2Motion's exporter works.
-- Joint placement is not automatic in Mesh2Motion. The assistant places joints from screenshots, `get_bones` and `analyze_model`.
+- Joint placement is not automatic in Mesh2Motion itself. `auto_place_joints` covers the human rig in a T-pose. Other rigs and poses are placed from screenshots, `get_bones` and `analyze_model`.
 - `reweight_with_blender` reads and writes GLB only, and its result is a file: it is not loaded back into the session, so screenshots and animation sheets still show Mesh2Motion's weights.
+
+## How `auto_place_joints` works
+
+The mesh surface is sampled evenly and cut into thin cross-sections: horizontal slices for legs, torso and neck, vertical slabs along each arm. The joints come from where those sections change shape:
+
+- **Arms**: each arm is followed from the fingertips inward until it merges into the torso. The armpit is where the underside of the arm drops away into the side of the torso, and the shoulder joint sits there. The wrist is the narrowest section (front to back) before the palm widens. The elbow is the narrowing between biceps and forearm.
+- **Legs**: the crotch is where the legs split at the midline. The hips sit at a fixed fraction of the shoulder height and above the crotch. The knee is the narrowest leg section, and the ankle sits just above where the front of the leg flares into the foot. Heel and toe come from the lowest slices.
+- **Head**: the neck is the narrowest section between the shoulders and the top, with the head joint there and `head_leaf` at the top.
+- **Spine and fingers** keep the rig's own spacing. The fingers are scaled to the measured hand length and width.
+
+Where a shape is ambiguous (a coat over the crotch, a helmet without a neck, low-poly arms without an elbow narrowing) the joint falls back on the rig's proportions. The result's `sources` and `notes` list these fallbacks. The constants were tuned on the human variants that ship with Mesh2Motion: the average error against their hand-placed joints is about 1.5–2% of the character height.
 
 ## Credits
 
