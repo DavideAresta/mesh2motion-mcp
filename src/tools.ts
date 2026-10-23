@@ -3,6 +3,7 @@ import path from 'node:path'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import { z } from 'zod'
+import { reweight_with_blender } from './blender.js'
 import { DIST_DIR, OUTPUT_DIR, resolve_input_path, resolve_output_path } from './config.js'
 import { type Mesh2MotionSession } from './session.js'
 
@@ -66,6 +67,7 @@ Pipeline (each step unlocks the next):
 5. bind_skin computes the skin weights and loads the animation library -> step "animations".
 6. list_animations, play_animation, animation_sheet (frame grid to judge the result), set_animation_options, set_props, import_animations.
 7. export writes a GLB or FBX with the chosen animations. go_back_to_step edit_skeleton lets you fix joints and bind again.
+8. Optional, when Blender is installed: reweight_with_blender on the exported GLB replaces Mesh2Motion's weights with Blender's automatic (bone heat) weights. Mesh2Motion's weights are hard-edged on hands and feet, so curled fingers and loose clothing can tear; check close-ups of hands, wrists and clothing in the animations before deciding.
 
 Coordinates are world space: Y is up, the character faces +Z, the character's own left side is +X. Units match the model (the app rescales extreme models on import). Relative output paths are written under ${OUTPUT_DIR}.`
 
@@ -406,6 +408,37 @@ export function register_tools (server: McpServer, session: Mesh2MotionSession):
       format,
       ...(result as Record<string, unknown>)
     })
+  })
+
+  tool('reweight_with_blender', {
+    title: 'Recompute skin weights with Blender',
+    description: 'Replaces the skin weights of a GLB written by `export` with Blender\'s automatic weights (bone heat diffusion). Mesh2Motion gives each vertex to its closest bone and blends only a few rings of vertices at each boundary, and never on hands and feet, so curled fingers and loose clothing can tear; bone heat blends smoothly through the volume. Every bone deforms except the tip markers and an unweighted root; the skeleton, rest pose and animations are kept as exported. Runs Blender in the background (M2M_BLENDER or `blender` on PATH) and does not change the live session.',
+    input: {
+      input_path: z.string().describe(`GLB written by export with contents "full"; relative paths are read from ${OUTPUT_DIR}`),
+      output_path: z.string().optional().describe('Destination GLB (default: next to the input, named <input>-blender.glb)'),
+      smooth: z.number().int().min(0).max(10).optional().describe('Weight smoothing passes after the heat solve (default 2)'),
+      max_influences: z.number().int().min(1).max(8).optional().describe('Bones per vertex in the result (default 4)'),
+      timeout_s: z.number().positive().max(1800).optional().describe('Default 300')
+    }
+  }, async (args) => {
+    const input = resolve_output_path(args.input_path)
+    if (!fs.existsSync(input)) throw new Error(`File not found: ${input}`)
+    if (path.extname(input).toLowerCase() !== '.glb') {
+      throw new Error('Only GLB files can be reweighted: export with format "glb", then convert the result if you need FBX')
+    }
+    let output = args.output_path !== undefined
+      ? resolve_output_path(args.output_path)
+      : path.join(path.dirname(input), `${path.basename(input, path.extname(input))}-blender.glb`)
+    if (path.extname(output).toLowerCase() !== '.glb') output += '.glb'
+    if (output === input) throw new Error('output_path must differ from input_path')
+    fs.mkdirSync(path.dirname(output), { recursive: true })
+
+    const summary = await reweight_with_blender(input, output, {
+      smooth: args.smooth ?? 2,
+      max_influences: args.max_influences ?? 4,
+      timeout_ms: (args.timeout_s ?? 300) * 1000
+    })
+    return json_result({ saved_to: output, size_bytes: fs.statSync(output).size, ...summary })
   })
 
   tool('screenshot', {

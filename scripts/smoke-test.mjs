@@ -42,6 +42,24 @@ async function call (name, args = {}) {
   try { return JSON.parse(text) } catch { return text }
 }
 
+// Blender is optional: without it the step is skipped instead of failing the run
+async function reweight (glb_path) {
+  const result = await client.callTool({ name: 'reweight_with_blender', arguments: { input_path: glb_path } })
+  const text = result.content.map(part => part.text).join('\n')
+  if (result.isError && text.startsWith('Blender not found')) {
+    console.log('- reweight_with_blender skipped (Blender not installed)')
+    return
+  }
+  if (result.isError) {
+    failures++
+    console.log(`✗ reweight_with_blender\n${text}\n`)
+    return
+  }
+  const summary = JSON.parse(text)
+  console.log(`✓ reweight_with_blender (Blender ${summary.blender})`)
+  console.log('  reweighted:', summary.saved_to, summary.deform_bones, 'deform bones,', summary.animations.length, 'clips')
+}
+
 const { tools } = await client.listTools()
 console.log(`${tools.length} tools: ${tools.map(t => t.name).join(', ')}\n`)
 
@@ -88,6 +106,7 @@ if (first !== undefined) {
   const names = [first, ...(all?.animations ?? []).map(a => a.name)].slice(0, 3)
   const glb = await call('export', { output_path: path.join(OUT, 'character'), animations: names, format: 'glb' })
   console.log('  glb:', glb?.saved_to, glb?.size_bytes, 'bytes,', glb?.clip_count, 'clips')
+  if (glb !== null) await reweight(glb.saved_to)
   const fbx = await call('export', { output_path: path.join(OUT, 'character-unity'), animations: [{ name: first, mirror: 'both' }], format: 'fbx', fbx_preset: 'unity' })
   console.log('  fbx:', fbx?.saved_to, fbx?.size_bytes, 'bytes,', fbx?.clip_count, 'clips')
 }

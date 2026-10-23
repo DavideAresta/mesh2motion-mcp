@@ -62,6 +62,71 @@ ModalDialog.prototype.show = function (this: any): void {
   original_dialog_show.call(this)
 }
 
+// ---------------------------------------------------------------------------
+// Render loop: the engine redraws the scene on every animation frame and the
+// animation list plays looping preview videos. Headless, nobody sees either and
+// SwiftShader draws them on the CPU, so the server pauses both between tool
+// calls. Captures render on demand either way.
+// ---------------------------------------------------------------------------
+
+const native_request_frame = window.requestAnimationFrame.bind(window)
+const native_cancel_frame = window.cancelAnimationFrame.bind(window)
+// frames requested while paused; negative ids keep them apart from the browser's
+const held_frames = new Map<number, FrameRequestCallback>()
+let held_frame_id = 0
+let render_loop_paused = false
+const paused_videos = new Set<HTMLVideoElement>()
+
+window.requestAnimationFrame = (callback: FrameRequestCallback): number => {
+  if (!render_loop_paused) return native_request_frame(callback)
+  held_frame_id--
+  held_frames.set(held_frame_id, callback)
+  return held_frame_id
+}
+
+window.cancelAnimationFrame = (id: number): void => {
+  if (id < 0) {
+    held_frames.delete(id)
+  } else {
+    native_cancel_frame(id)
+  }
+}
+
+// Resuming waits until the held frames ran once, so the tool that resumed the
+// loop sees the scene as a running loop would (animation advanced, controls updated).
+async function set_render_loop (args: { running: boolean }): Promise<void> {
+  render_loop_paused = !args.running
+  if (render_loop_paused) {
+    for (const video of document.querySelectorAll('video')) {
+      if (video.paused) continue
+      video.pause()
+      paused_videos.add(video)
+    }
+    return
+  }
+
+  for (const video of paused_videos) {
+    if (video.isConnected) void video.play().catch(() => undefined)
+  }
+  paused_videos.clear()
+  await new Promise<void>(resolve => {
+    native_request_frame((time) => {
+      const callbacks = [...held_frames.values()]
+      held_frames.clear()
+      for (const callback of callbacks) {
+        try {
+          callback(time)
+        } catch (error) {
+          reportError(error)
+        }
+      }
+      resolve()
+    })
+    // a page that gets no frames must not hang the tool call
+    setTimeout(resolve, 1000)
+  })
+}
+
 const engine = new Mesh2MotionEngine()
 const ui: any = engine.ui
 const listing: any = engine.animations_listing_step
@@ -1488,6 +1553,7 @@ function auto_place_joints (args: { markers?: BodyMarkers, symmetric?: boolean }
 // ---------------------------------------------------------------------------
 
 const api = {
+  set_render_loop,
   status,
   catalog,
   get_counters,
