@@ -35,11 +35,30 @@ export class Mesh2MotionSession {
   private log_seq = 0
   private browser_description = ''
 
-  /** Run `task` after every previously queued task has finished. */
+  /** Run `task` after every previously queued task has finished, with the app's render loop running. */
   async exclusive<T> (task: () => Promise<T>): Promise<T> {
-    const result = this.queue.then(task, task)
+    const run = async (): Promise<T> => await this.with_render_loop(task)
+    const result = this.queue.then(run, run)
     this.queue = result.catch(() => undefined)
     return await result
+  }
+
+  // The app redraws its scene on every animation frame. Headless that only burns
+  // CPU (several cores with SwiftShader), so the loop runs while a tool works and
+  // pauses in between. A visible window keeps it running so it stays interactive.
+  private async with_render_loop<T> (task: () => Promise<T>): Promise<T> {
+    await this.set_render_loop(true)
+    try {
+      return await task()
+    } finally {
+      await this.set_render_loop(false)
+    }
+  }
+
+  private async set_render_loop (running: boolean): Promise<void> {
+    if (!HEADLESS || !this.is_running) return
+    // only saves CPU: a page that is gone or reloading must not fail the tool
+    await this.call('set_render_loop', { running }).catch(() => undefined)
   }
 
   get is_running (): boolean {
