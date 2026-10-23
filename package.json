@@ -1,0 +1,37 @@
+{
+  "name": "mesh2motion-mcp",
+  "version": "0.1.0",
+  "description": "MCP server that drives the Mesh2Motion web app (auto-rigging, animation library, GLB/FBX export) through a headless browser",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "mesh2motion-mcp": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "files": [
+    "dist",
+    "bridge",
+    "scripts"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "setup-app": "node scripts/setup-app.mjs",
+    "rebuild-bridge": "node scripts/setup-app.mjs --skip-install --skip-browser",
+    "setup": "npm run build && npm run setup-app",
+    "start": "node dist/index.js",
+    "smoke": "node scripts/smoke-test.mjs",
+    "inspect": "npx @modelcontextprotocol/inspector node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "playwright": "^1.64.1",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^6.0.3"
+  }
+}

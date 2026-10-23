@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "mesh2motion": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "/home/davide.aresta/Scrivania/extra/meshtomotion-mcp/dist/index.js"
+      ],
+      "env": {}
+    }
+  }
+}
