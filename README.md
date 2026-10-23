@@ -29,7 +29,7 @@ MCP client ──stdio──▶ mesh2motion-mcp (Node)
           Mesh2Motion engine, built from the upstream repo
 ```
 
-`npm run setup` clones the upstream repository into `vendor/mesh2motion-app`, adds one extra page (`mcp-bridge.html`, a copy of the app's create page that boots the engine through [`bridge/McpBridge.ts`](bridge/McpBridge.ts)) and builds it with the app's own Vite toolchain. The bridge calls the engine's steps directly, records the app's error dialogs, and renders captures with temporary cameras. Nothing in the upstream code is modified, so updating the app is a `git pull` and a rebuild.
+`npm run setup` clones the upstream repository into `vendor/mesh2motion-app`, adds one extra page (`mcp-bridge.html`, a copy of the app's create page that boots the engine through [`bridge/McpBridge.ts`](bridge/McpBridge.ts)) and builds it with the app's own Vite toolchain. The bridge calls the engine's steps directly, records the app's error dialogs, and renders captures with temporary cameras. Between tool calls it pauses the app's render loop and preview videos, so an idle server doesn't keep drawing a page nobody sees (with SwiftShader that costs several CPU cores). Nothing in the upstream code is modified, so updating the app is a `git pull` and a rebuild.
 
 ## Requirements
 
@@ -97,7 +97,7 @@ Add the server to the client's MCP configuration (for Claude Desktop: Settings �
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `M2M_OUTPUT_DIR` | `./output` | Where relative export and screenshot paths are written |
-| `M2M_HEADLESS` | `1` | `0` opens a visible browser window so you can watch the app work |
+| `M2M_HEADLESS` | `1` | `0` opens a visible browser window so you can watch the app work; its render loop keeps running between tool calls |
 | `M2M_BROWSER_CHANNEL` | auto | Force `chrome`, `msedge` or `chromium` (Playwright's Chromium only). Auto: Playwright Chromium if installed, then Chrome, then Edge, then download Chromium |
 | `M2M_AUTO_INSTALL_BROWSER` | `1` | `0` never downloads Chromium; the server reports an error when no browser is found |
 | `M2M_APP_DIR` | `./vendor/mesh2motion-app` | Use another Mesh2Motion checkout (setup builds it in place) |
