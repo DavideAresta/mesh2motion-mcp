@@ -36,6 +36,7 @@ MCP client ──stdio──▶ mesh2motion-mcp (Node)
 - Node.js 20 or newer, npm and git
 - A Chromium-based browser. Google Chrome or Microsoft Edge are used when installed. Otherwise Playwright's Chromium is downloaded automatically, once, into `~/.cache/ms-playwright` (about 400 MB on disk). This happens during `npm run setup`, or when the server starts if it is still missing then. On a minimal Linux server Chromium may also need its system libraries: `sudo npx playwright install-deps chromium`.
 - WebGL works without a GPU through SwiftShader, so it also runs on servers and over SSH
+- Optional: [Blender](https://www.blender.org) for `reweight_with_blender` (tested with 4.0). It is found on `PATH`, in the default macOS/Windows install location, or through `M2M_BLENDER`
 
 ## Setup
 
@@ -103,6 +104,7 @@ Add the server to the client's MCP configuration (for Claude Desktop: Settings �
 | `M2M_APP_DIR` | `./vendor/mesh2motion-app` | Use another Mesh2Motion checkout (setup builds it in place) |
 | `M2M_APP_REF` | default branch | Branch, tag or commit to build (setup only) |
 | `M2M_APP_REPO` | upstream GitHub | Fork to clone (setup only) |
+| `M2M_BLENDER` | auto | Blender executable for `reweight_with_blender`. Auto: `blender` on `PATH`, then the default macOS/Windows install location |
 
 ## Tools
 
@@ -131,9 +133,22 @@ The pipeline is a sequence of steps; tools say which step they need and what to 
 | animations | `set_props` | Weapons and tools in either hand (human, kaiju) |
 | animations | `import_animations` | Add custom `.glb` animations made for the same rig |
 | animations | `export` | GLB or FBX (Unreal/Unity preset), mesh or skeleton only, Mixamo bone names (human), per-clip mirroring |
+| after export | `reweight_with_blender` | Replace the skin weights of an exported GLB with Blender's automatic weights (needs Blender) |
 | any | `screenshot` | Front/back/left/right/top/bottom (orthographic, with a world grid) or perspective; joints drawn with names |
 
 Coordinates are world space: Y up, the character faces +Z and its own left side is +X. In screenshots, cyan joints are on the left side, orange on the right, yellow on the center line.
+
+### Smoother weights with Blender
+
+Mesh2Motion gives every vertex to its closest bone and blends only a few rings of vertices at each boundary, and not at all on hands and feet. On generated meshes, where fingers are fused and clothing is part of the body, that shows when joints bend far: curled fingers break into spikes and a tunic can split between the legs.
+
+`reweight_with_blender` takes a GLB written by `export` and recomputes the weights in Blender with its automatic weights (bone heat diffusion), which blend smoothly through the volume. It runs [`scripts/blender_reweight.py`](scripts/blender_reweight.py) in a background Blender, without touching the live session:
+
+- Every bone deforms except the tip markers (`*_leaf`, the finger stub of a single-bone hand) and an unweighted root. The heat solve uses a temporary copy of the skeleton whose bones run from each joint to its child joint, because the imported bones don't point along the limbs.
+- Vertices the heat solve can't reach (detached pieces such as eyes) keep their Mesh2Motion weights; the result reports how many.
+- Joint names, bind pose (inverse bind matrices) and animations stay as exported. Without an animation playing, the file now shows the bind pose; Mesh2Motion leaves the bones in an animation frame.
+
+On Linux, distribution builds of Blender find their Python through the `python3` on `PATH`, so a conda or pyenv Python placed first breaks Blender's glTF add-on. The server starts Blender with `/usr/bin` and `/bin` first on `PATH`, and with `--factory-startup` so user add-ons don't load.
 
 ## Example session
 
@@ -147,6 +162,7 @@ A typical run:
 4. `set_skinning_options {preview: "weights"}` + `screenshot` to inspect the influence areas
 5. `bind_skin` → `list_animations {filter: "sword"}` → `animation_sheet {name: "Sword_Attack"}`
 6. `export {output_path: "knight", format: "fbx", fbx_preset: "unity", animations: ["Idle", "Walk", "Run", "Sword_Attack"]}`
+7. Optional, with Blender installed: export as GLB, then `reweight_with_blender {input_path: "knight.glb"}` writes `knight-blender.glb` with smoother weights
 
 ## Keeping Mesh2Motion up to date
 
@@ -173,6 +189,7 @@ node scripts/smoke-test.mjs --model path/to/model.glb --type fox
 - Mesh2Motion's separate retargeting page (moving its animations onto an already rigged model) is not exposed yet.
 - Exports always contain at least one animation; that is how Mesh2Motion's exporter works.
 - Joint placement is not automatic in Mesh2Motion. The assistant places joints from screenshots, `get_bones` and `analyze_model`.
+- `reweight_with_blender` reads and writes GLB only, and its result is a file: it is not loaded back into the session, so screenshots and animation sheets still show Mesh2Motion's weights.
 
 ## Credits
 

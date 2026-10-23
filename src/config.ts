@@ -30,6 +30,9 @@ export const BROWSER_CHANNEL = process.env.M2M_BROWSER_CHANNEL?.trim().toLowerCa
 /** Download Playwright's Chromium when no usable browser is found (M2M_AUTO_INSTALL_BROWSER=0 to disable) */
 export const AUTO_INSTALL_BROWSER = env_flag('M2M_AUTO_INSTALL_BROWSER', true)
 
+/** Blender executable for reweight_with_blender. Default: `blender` on PATH, then the macOS/Windows install location */
+export const BLENDER_PATH = process.env.M2M_BLENDER?.trim() || undefined
+
 export const VIEWPORT = { width: 1280, height: 860 }
 
 export function expand_home (input: string): string {
