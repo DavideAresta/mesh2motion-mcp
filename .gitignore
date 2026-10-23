@@ -3,3 +3,6 @@ dist/
 vendor/
 output/
 *.log
+
+# per-machine Claude Code config (see README)
+.mcp.json

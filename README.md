@@ -54,20 +54,39 @@ It rigs the sample human, renders a few images and exports a GLB and an FBX into
 
 ### Claude Code
 
-This folder already contains a `.mcp.json`, so Claude Code sessions opened here see the server. To use it from any project:
+To make the server available in every project, run this from the mesh2motion-mcp folder:
 
 ```bash
-claude mcp add --scope user mesh2motion -- node "$PWD/dist/index.js"   # run from this folder
+claude mcp add --scope user mesh2motion -- node "$PWD/dist/index.js"
 ```
 
+To enable it for a single project instead, create a `.mcp.json` file in that project's root folder. Use the absolute path of `dist/index.js` on your machine:
+
+```json
+{
+  "mcpServers": {
+    "mesh2motion": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["/path/to/mesh2motion-mcp/dist/index.js"],
+      "env": {}
+    }
+  }
+}
+```
+
+Settings from the [environment variables](#environment-variables) table go in `env`, for example `"env": { "M2M_OUTPUT_DIR": "/home/me/exports" }`. Claude Code asks you to approve a project's `.mcp.json` servers the first time it opens the project. Running `claude mcp add --scope project mesh2motion -- node /path/to/mesh2motion-mcp/dist/index.js` from the project folder writes the same file for you. `.mcp.json` holds a path that only exists on your machine, so this repository doesn't ship one and ignores it.
+
 ### Claude Desktop and other clients
+
+Add the server to the client's MCP configuration (for Claude Desktop: Settings → Developer → Edit Config):
 
 ```json
 {
   "mcpServers": {
     "mesh2motion": {
       "command": "node",
-      "args": ["/path/to/meshtomotion-mcp/dist/index.js"]
+      "args": ["/path/to/mesh2motion-mcp/dist/index.js"]
     }
   }
 }
