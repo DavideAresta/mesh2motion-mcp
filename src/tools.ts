@@ -62,7 +62,7 @@ Pipeline (each step unlocks the next):
 1. load_model (GLB, FBX or ZIP with glTF; or a builtin sample) -> step "load_skeleton".
 2. Optional transform_model (rotate so the character stands up on +Y and faces +Z, align_to_floor, center_xz, rescale).
 3. select_skeleton (type + scale, "auto" is a good first guess), check with screenshot, then confirm_skeleton -> step "edit_skeleton".
-4. Place the joints inside the mesh: get_bones, screenshot (front + left views show labelled joints and a coordinate grid), analyze_model (vertex slices), then set_bones with world positions. Left/right edits mirror automatically. Optional set_skinning_options and preview="weights" to inspect the weights.
+4. Place the joints inside the mesh. For a human in T-pose, auto_place_joints fits them all from the mesh shape. Otherwise, or to correct it: get_bones, screenshot (front + left views show labelled joints and a coordinate grid), analyze_model (vertex slices), then set_bones with world positions. Left/right edits mirror automatically. Optional set_skinning_options and preview="weights" to inspect the weights.
 5. bind_skin computes the skin weights and loads the animation library -> step "animations".
 6. list_animations, play_animation, animation_sheet (frame grid to judge the result), set_animation_options, set_props, import_animations.
 7. export writes a GLB or FBX with the chosen animations. go_back_to_step edit_skeleton lets you fix joints and bind again.
@@ -222,6 +222,25 @@ export function register_tools (server: McpServer, session: Mesh2MotionSession):
     },
     read_only: true
   }, async (args) => json_result(await session.call('get_bones', args)))
+
+  const marker = z.array(z.number()).min(2).max(3)
+  tool('auto_place_joints', {
+    title: 'Place the human joints automatically',
+    description: 'Human rig, step "edit_skeleton": fits every joint to the mesh from its cross-sections (crotch, knees, ankles, armpits, elbows, wrists, neck); spine and fingers keep the rig\'s spacing, scaled to the body and hand. Needs a T-pose standing on y=0 and facing +Z (transform_model align_to_floor/center_xz first); refuses other poses. Optional markers override detected landmarks. Returns the main joints, which landmarks were detected or estimated (sources, confidence) and notes; it also puts the head correction plane under the chin. Check with screenshot and fix single joints with set_bones.',
+    input: {
+      markers: z.object({
+        chin: marker.optional(),
+        groin: marker.optional(),
+        left_wrist: marker.optional(),
+        right_wrist: marker.optional(),
+        left_elbow: marker.optional(),
+        right_elbow: marker.optional(),
+        left_knee: marker.optional(),
+        right_knee: marker.optional()
+      }).optional().describe('World points read from a front view: [x, y], or [x, y, z] to set the depth too. "left" is the character\'s left (+X)'),
+      symmetric: z.boolean().optional().describe('Average both sides into a mirror-symmetric skeleton (default true); false keeps each side as measured')
+    }
+  }, async (args) => json_result(await session.call('auto_place_joints', args)))
 
   tool('set_bones', {
     title: 'Move or rotate joints',

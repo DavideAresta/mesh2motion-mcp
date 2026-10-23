@@ -53,6 +53,12 @@ await call('screenshot', { view: 'front', save_path: path.join(OUT, '01-preview-
 const confirmed = await call('confirm_skeleton')
 console.log('  bones:', confirmed?.bone_count)
 
+if (rig_type === 'human') {
+  const placed = await call('auto_place_joints')
+  console.log('  placed:', placed?.placed, 'confidence:', placed?.confidence, 'notes:', placed?.notes)
+  await call('screenshot', { view: 'front', save_path: path.join(OUT, '02-auto-joints-front.png') })
+}
+
 const bones = await call('get_bones', { include_details: false })
 const side_bone = bones?.bones.find(bone => bone.mirror !== undefined)
 await call('screenshot', { view: 'front', save_path: path.join(OUT, '02-edit-front.png') })

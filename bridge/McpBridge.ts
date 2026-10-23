@@ -22,6 +22,7 @@ import { ModelCleanupUtility } from '../lib/processes/load-model/ModelCleanupUti
 import { ArmExtensionControl } from '../lib/processes/animations-listing/ArmExtensionControl'
 import { PropCatalog } from '../lib/processes/animations-listing/props/PropCatalog'
 import { PropType } from '../lib/processes/animations-listing/props/PropType'
+import { fit_human_joints, type BodyMarkers } from './JointFitting.ts'
 import {
   BoneNamingStructure, ExportContents, ExportFormat, FbxExportPreset
 } from '../lib/processes/export-to-file/DownloadSettings'
@@ -1420,6 +1421,71 @@ function analyze_model (args: { slices?: number, axis?: 'y' | 'z' }): Record<str
 }
 
 // ---------------------------------------------------------------------------
+// Automatic joint placement (human rig in T-pose)
+// ---------------------------------------------------------------------------
+
+// World-space triangles of every mesh of the model, 9 floats each
+function model_triangles (): Float32Array {
+  const root = model_root()
+  root.updateMatrixWorld(true)
+  const chunks: Float32Array[] = []
+  const vertex = new THREE.Vector3()
+  root.traverse((child) => {
+    const mesh = child as THREE.Mesh
+    if (mesh.isMesh !== true) return
+    const positions = mesh.geometry.attributes.position
+    const index = mesh.geometry.index
+    const corners = index !== null ? index.count : positions.count
+    const chunk = new Float32Array(Math.floor(corners / 3) * 9)
+    for (let k = 0; k < chunk.length / 3; k++) {
+      vertex.fromBufferAttribute(positions, index !== null ? index.getX(k) : k).applyMatrix4(mesh.matrixWorld)
+      chunk[k * 3] = vertex.x
+      chunk[k * 3 + 1] = vertex.y
+      chunk[k * 3 + 2] = vertex.z
+    }
+    chunks.push(chunk)
+  })
+  const triangles = new Float32Array(chunks.reduce((total, chunk) => total + chunk.length, 0))
+  let offset = 0
+  for (const chunk of chunks) {
+    triangles.set(chunk, offset)
+    offset += chunk.length
+  }
+  return triangles
+}
+
+function auto_place_joints (args: { markers?: BodyMarkers, symmetric?: boolean }): Record<string, unknown> {
+  require_step(ProcessStep.EditSkeleton)
+  if (skeleton_type() !== SkeletonType.Human) {
+    throw new Error('auto_place_joints works with the human skeleton only; place the joints of other rigs with set_bones')
+  }
+
+  const fit = fit_human_joints({
+    triangles: model_triangles(),
+    template: current_bones().map(bone => ({ name: bone.name, parent: bone.parent, world: v3(bone.world, 6) })),
+    markers: args.markers,
+    symmetric: args.symmetric
+  })
+  const edits = Object.entries(fit.joints).map(([name, position]) => ({ name, position: [r(position[0]), r(position[1]), r(position[2])] as Vec3 }))
+  set_bone_transforms({ bones: edits, mirror: false })
+  // the head weight correction plane goes just under the chin (it only acts once enabled)
+  engine.edit_skeleton_step.set_preview_plane_height(r(fit.head_correction_height, 3))
+
+  const round = (values: Record<string, number[]>): Record<string, number[]> =>
+    Object.fromEntries(Object.entries(values).map(([name, value]) => [name, value.map(component => r(component, 3))]))
+  return {
+    placed: edits.length,
+    confidence: fit.confidence,
+    sources: fit.sources,
+    notes: fit.notes,
+    landmarks: round(fit.landmarks),
+    joints: round(Object.fromEntries(Object.entries(fit.joints).filter(([name]) => !is_detail_bone(name)))),
+    head_correction_height: r(fit.head_correction_height, 3),
+    hint: 'Check with screenshot (front and left). Fix single joints with set_bones; edit_history undo restores the previous joints.'
+  }
+}
+
+// ---------------------------------------------------------------------------
 
 const api = {
   status,
@@ -1443,7 +1509,8 @@ const api = {
   export_model,
   capture,
   animation_sheet,
-  analyze_model
+  analyze_model,
+  auto_place_joints
 }
 
 declare global {
